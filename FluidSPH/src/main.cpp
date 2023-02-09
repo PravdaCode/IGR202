@@ -105,7 +105,7 @@ private:
 class SphSolver {
 public:
   explicit SphSolver(
-    const Real nu=10000, const Real h=0.5, const Real density=1e3,
+    const Real nu=1, const Real h=0.5, const Real density=1e3,
     const Vec2f g=Vec2f(0, -9.8), const Real eta=0.01, const Real gamma=7.0) :
     _kernel(h), _nu(nu), _h(h), _d0(density),
     _g(g), _eta(eta), _gamma(gamma)
@@ -131,10 +131,41 @@ public:
     _r = static_cast<Real>(res_x) - 0.5*_h;
     _b = 0.5*_h;
     _t = static_cast<Real>(res_y) - 0.5*_h;
+    int count = 0;
+
+    for (int i = 0; i < _r; ++i) {
+        _pos.push_back(Vec2f(i + 0.25, _b));
+        _pos.push_back(Vec2f(i + 0.75, _b));
+        _pos.push_back(Vec2f(i + 0.25, _b));
+        _pos.push_back(Vec2f(i + 0.75, _b));
+
+        _pos.push_back(Vec2f(i + 0.25, _t));
+        _pos.push_back(Vec2f(i + 0.75, _t));
+        _pos.push_back(Vec2f(i + 0.25, _t));
+        _pos.push_back(Vec2f(i + 0.75, _t));
+
+        count += 8;
+
+    }
+
+    for (int i = 0; i < _t; ++i) {
+        _pos.push_back(Vec2f(_r, i + 0.25));
+        _pos.push_back(Vec2f(_r, i + 0.75));
+        _pos.push_back(Vec2f(_r, i + 0.25));
+        _pos.push_back(Vec2f(_r, i + 0.75));
+
+        _pos.push_back(Vec2f(_l, i + 0.25));
+        _pos.push_back(Vec2f(_l, i + 0.75));
+        _pos.push_back(Vec2f(_l, i + 0.25));
+        _pos.push_back(Vec2f(_l, i + 0.75));
+
+        count += 8;
+
+    }
 
     // sample a fluid mass
-    for(int j=0; j<f_height; ++j) {
-      for(int i=0; i<f_width; ++i) {
+    for(int j=1; j<f_height; ++j) {
+      for(int i=1; i<f_width; ++i) {
         _pos.push_back(Vec2f(i+0.25, j+0.25));
         _pos.push_back(Vec2f(i+0.75, j+0.25));
         _pos.push_back(Vec2f(i+0.25, j+0.75));
@@ -148,10 +179,17 @@ public:
     _p   = std::vector<Real>(_pos.size(), 0);
     _d   = std::vector<Real>(_pos.size(), 0);
 
+
     _col = std::vector<float>(_pos.size()*4, 1.0); // RGBA
     _vln = std::vector<float>(_pos.size()*4, 0.0); // GL_LINES
 
     _pidxInGrid = std::vector<std::vector<tIndex>>(_resX * _resY, std::vector<tIndex>());
+
+    _boundary = std::vector<bool>(_pos.size(), false);
+
+    for (int i = 0; i < count; i++) {
+        _boundary[i] = true;
+    }
 
     updateColor();
   }
@@ -286,6 +324,9 @@ private:
     {
         // TODO:
         for (tIndex i = 0; i < _acc.size(); i++) {
+            if (_boundary[i] == true) {
+                continue;
+            }
             _acc[i] += _g;
         }
     }
@@ -298,8 +339,8 @@ private:
         for (tIndex i = 0; i < _p.size(); i++) {
             std::vector<std::tuple<int, int>> neighbors = getNeighbors(i);
             Vec2f aux;
-            if (i == 505) {
-                int z = 0;
+            if (_boundary[i] == true) {
+                continue;
             }
 
             for (auto point : neighbors) {
@@ -321,8 +362,8 @@ private:
         for (tIndex i = 0; i < _pos.size(); i++) {
             std::vector<std::tuple<int, int>> neighbors = getNeighbors(i);
             Vec2f aux;
-            if (i == 505) {
-                int z = 0;
+            if (_boundary[i] == true) {
+                continue;
             }
 
             for (auto point : neighbors) {
@@ -345,7 +386,10 @@ private:
     {
         // TODO:
         for (tIndex i = 0; i < _vel.size(); i++) {
-            _vel[i] += _dt * _acc[i];
+            if (_boundary[i] == true) {
+                continue;
+            }
+            _vel[i] += 2*_dt * _acc[i];
         }
     }
 
@@ -353,10 +397,10 @@ private:
     {
         // TODO:
         for (tIndex i = 0; i < _pos.size(); i++) {
-            _pos[i] += _dt * _vel[i];
-            if (_pos[i].x < 0 || _pos[i].y < 0) {
-                std::cout << "ANSELME, ON VEUT MONCRAFTE !!!" << '\n';
+            if (_boundary[i] == true) {
+                continue;
             }
+            _pos[i] += _dt * _vel[i];
         }
     }
 
@@ -404,6 +448,7 @@ private:
   const CubicSpline _kernel;
 
   // particle data
+  std::vector<bool> _boundary; //
   std::vector<Vec2f> _pos;      // position
   std::vector<Vec2f> _vel;      // velocity
   std::vector<Vec2f> _acc;      // acceleration
